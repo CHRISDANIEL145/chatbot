@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IntervuAI Pro</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5; /* Light grey background */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .container {
+            max-width: 900px;
+            width: 100%;
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+            padding: 32px;
+            box-sizing: border-box;
+        }
+        /* Custom scrollbar for better aesthetics */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-left-color: #3b82f6;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div id="app" class="container">
+        <!-- Header -->
+        <header class="flex items-center pb-6 border-b border-gray-200 mb-8">
+            <div class="bg-blue-100 p-2 rounded-full mr-3">
+                <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.004 9.004 0 01-7.539-4.582C3.25 10.78 3 6.864 3 12c0 4.418 4.03 8 9 8s9-3.582 9-8z"></path>
+                </svg>
+            </div>
+            <div>
+                <h1 class="text-2xl font-semibold text-gray-800">IntervuAI Pro</h1>
+                <p class="text-sm text-gray-500">AI-Powered Interview Platform</p>
+            </div>
+        </header>
+
+        <!-- Page Content will be dynamically loaded here -->
+        <div id="page-content"></div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay hidden">
+        <div class="spinner"></div>
+        <p class="text-blue-600 font-semibold text-lg" id="loadingMessage">Processing...</p>
+    </div>
+
+    <script>
+        // Global state for the application
+        const appState = {
+            currentPage: 'uploadResume', // 'uploadResume', 'interviewSetup', 'interviewSession', 'interviewComplete'
+            candidateProfile: null,
+            interviewQuestions: [],
+            currentQuestionIndex: 0,
+            interviewResponses: [],
+            interviewAssessment: null,
+            sessionId: crypto.randomUUID(), // Generate a unique session ID for this user's browser session
+            timerInterval: null // To store the interval ID for the timer
+        };
+
+        // Base URL for your Flask backend
+        const BACKEND_URL = 'http://127.0.0.1:5000'; 
+
+        // Helper functions for loading overlay
+        function showLoading(message = "Processing...") {
+            document.getElementById('loadingMessage').textContent = message;
+            document.getElementById('loadingOverlay').classList.remove('hidden');
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingOverlay').classList.add('hidden');
+        }
+
+        // --- Page Rendering Functions ---
+
+        function renderUploadResumePage() {
+            const pageContent = document.getElementById('page-content');
+            pageContent.innerHTML = `
+                <div class="text-center py-10">
+                    <div class="bg-blue-100 p-4 rounded-full inline-flex mb-6">
+                        <svg class="w-12 h-12 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+                        </svg>
+                    </div>
+                    <h2 class="text-3xl font-bold text-gray-800 mb-3">Upload Resume</h2>
+                    <p class="text-gray-600 mb-8 max-w-md mx-auto">
+                        Upload the candidate's resume to begin the AI-powered interview process. We'll analyze their background and create personalized questions.
+                    </p>
+
+                    <div class="border-2 border-dashed border-gray-300 rounded-lg p-10 mb-8 cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-colors duration-200"
+                         onclick="document.getElementById('resumeFileInput').click();">
+                        <input type="file" id="resumeFileInput" class="hidden" accept=".pdf,.doc,.docx" onchange="handleResumeUpload(event)">
+                        <div class="flex flex-col items-center">
+                            <svg class="w-16 h-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-3 6h.01M17 19H7a2 2 0 01-2-2V7a2 2 0 012-2h10a2 2 0 012 2v10a2 2 0 01-2 2z"></path>
+                            </svg>
+                            <p class="text-xl font-medium text-gray-700 mb-2">Choose Resume File</p>
+                            <p class="text-sm text-gray-500">PDF, DOC, or DOCX (Max 10MB)</p>
+                            <p id="fileNameDisplay" class="text-sm text-blue-600 mt-2"></p>
+                        </div>
+                    </div>
+
+                    <div id="uploadStatus" class="text-center text-sm mt-4 hidden">
+                        <p class="text-green-600 font-medium">Upload successful! Processing resume...</p>
+                    </div>
+
+                    <div class="bg-blue-50 border border-blue-200 text-blue-800 px-6 py-4 rounded-lg flex items-start text-left">
+                        <svg class="w-6 h-6 text-blue-600 mr-3 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        <div>
+                            <p class="font-semibold mb-1">Privacy & Security</p>
+                            <p class="text-sm">All uploaded resumes are processed securely and temporarily. Personal data is not stored permanently and is handled with utmost confidentiality.</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderInterviewSetupPage() {
+            const pageContent = document.getElementById('page-content');
+            const candidate = appState.candidateProfile;
+            if (!candidate) {
+                // This should ideally not happen if flow is correct, but for safety
+                console.error("Candidate profile not found for setup page. Redirecting to upload.");
+                appState.currentPage = 'uploadResume';
+                renderPage();
+                return;
+            }
+
+            const skillsHtml = candidate.key_skills ? candidate.key_skills.map(skill => `<span class="inline-block bg-blue-100 text-blue-700 text-sm px-3 py-1 rounded-full mr-2 mb-2">${skill}</span>`).join('') : 'No skills found.';
+            const inferredPosition = candidate.inferred_position || '';
+
+            pageContent.innerHTML = `
+                <div class="py-6">
+                    <div class="text-center mb-8">
+                        <div class="bg-green-100 p-4 rounded-full inline-flex mb-6">
+                            <svg class="w-12 h-12 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                            </svg>
+                        </div>
+                        <h2 class="text-3xl font-bold text-gray-800 mb-3">Interview Setup</h2>
+                        <p class="text-gray-600 max-w-md mx-auto">
+                            Review the candidate profile and configure the interview settings.
+                        </p>
+                    </div>
+
+                    <div class="bg-gray-50 p-6 rounded-lg mb-8">
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4">Candidate Profile</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-gray-700">
+                            <div><span class="font-medium">Name:</span> ${candidate.name || 'N/A'}</div>
+                            <div><span class="font-medium">Email:</span> ${candidate.email || 'N/A'}</div>
+                            <div class="col-span-2"><span class="font-medium">Experience:</span> ${candidate.experience || 'N/A'}</div>
+                            <div class="col-span-2">
+                                <span class="font-medium block mb-2">Key Skills:</span>
+                                <div class="flex flex-wrap">
+                                    ${skillsHtml}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-8">
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4">Interview Configuration</h3>
+                        <label for="positionRole" class="block text-gray-700 text-sm font-medium mb-2">Position/Role</label>
+                        <input type="text" id="positionRole" class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g., Senior Frontend Developer" value="${inferredPosition}">
+                    </div>
+
+                    <div class="flex justify-end">
+                        <button onclick="startInterview()" class="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold shadow-md hover:bg-blue-700 transition-colors duration-200">
+                            Start Interview
+                        </button>
+                    </div>
+                </div>
+            `;
+            // Set the value of the input field after it's rendered
+            document.getElementById('positionRole').value = inferredPosition;
+        }
+
+        function renderInterviewSessionPage() {
+            const pageContent = document.getElementById('page-content');
+            const currentQuestion = appState.interviewQuestions[appState.currentQuestionIndex];
+            if (!currentQuestion) {
+                console.error("No current question to display. Redirecting to assessment or upload.");
+                appState.currentPage = 'interviewComplete'; // Fallback
+                renderPage();
+                return;
+            }
+
+            const totalQuestions = appState.interviewQuestions.length;
+            const progress = ((appState.currentQuestionIndex + 1) / totalQuestions) * 100;
+
+            // Clear previous timer if any
+            if (appState.timerInterval) {
+                clearInterval(appState.timerInterval);
+            }
+            let seconds = 0;
+            function startTimer() {
+                seconds = 0; // Reset timer for each question
+                const timerDisplay = document.getElementById('timerDisplay');
+                timerDisplay.textContent = '00:00'; // Initialize display
+                appState.timerInterval = setInterval(() => {
+                    seconds++;
+                    const minutes = Math.floor(seconds / 60);
+                    const remainingSeconds = seconds % 60;
+                    timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+                }, 1000);
+            }
+
+            pageContent.innerHTML = `
+                <div class="py-6">
+                    <div class="flex justify-between items-center mb-8">
+                        <div class="flex items-center text-gray-600">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            <span id="timerDisplay">00:00</span>
+                        </div>
+                        <button onclick="resetInterview()" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300 transition-colors duration-200">
+                            Reset
+                        </button>
+                    </div>
+
+                    <div class="mb-8">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-3">Interview Session</h2>
+                        <div class="flex items-center mb-4">
+                            <span class="text-gray-600 mr-3">Question ${appState.currentQuestionIndex + 1} of ${totalQuestions}</span>
+                            <div class="w-full bg-gray-200 rounded-full h-2.5">
+                                <div class="bg-blue-600 h-2.5 rounded-full" style="width: ${progress}%"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-blue-50 p-6 rounded-lg mb-8">
+                        <div class="flex items-start mb-4">
+                            <div class="bg-blue-100 p-2 rounded-full mr-3">
+                                <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.004 9.004 0 01-7.539-4.582C3.25 10.78 3 6.864 3 12c0 4.418 4.03 8 9 8s9-3.582 9-8z"></path>
+                                </svg>
+                            </div>
+                            <div>
+                                <div class="flex flex-wrap gap-2 mb-2">
+                                    ${currentQuestion.tags.map(tag => `<span class="bg-blue-200 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full">${tag}</span>`).join('')}
+                                </div>
+                                <p class="text-gray-800 text-lg leading-relaxed">${currentQuestion.question}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-8">
+                        <label for="yourResponse" class="block text-gray-700 text-sm font-medium mb-2">Your Response</label>
+                        <textarea id="yourResponse" rows="6" class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Type your response here..."></textarea>
+                        <p class="text-sm text-gray-500 mt-2">Take your time to provide a thoughtful response. Be specific and use examples when possible.</p>
+                    </div>
+
+                    <div class="flex justify-between">
+                        <button onclick="previousQuestion()" ${appState.currentQuestionIndex === 0 ? 'disabled' : ''} class="bg-gray-200 text-gray-700 px-6 py-3 rounded-lg font-semibold shadow-md hover:bg-gray-300 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
+                            Previous
+                        </button>
+                        <button onclick="nextQuestion()" class="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold shadow-md hover:bg-blue-700 transition-colors duration-200">
+                            ${appState.currentQuestionIndex === totalQuestions - 1 ? 'Complete Interview' : 'Next Question'}
+                        </button>
+                    </div>
+                </div>
+            `;
+            startTimer(); // Start the timer when the session page loads
+        }
+
+        function renderInterviewCompletePage() {
+            const pageContent = document.getElementById('page-content');
+            const assessment = appState.interviewAssessment;
+            if (!assessment) {
+                console.error("No assessment data to display. Redirecting to upload.");
+                appState.currentPage = 'uploadResume';
+                renderPage();
+                return;
+            }
+
+            const detailedQuestionsHtml = assessment.detailedQuestionAnalysis.map(q => `
+                <div class="bg-gray-50 p-5 rounded-lg mb-4">
+                    <div class="flex items-start mb-3">
+                        <div class="bg-blue-100 p-2 rounded-full mr-3">
+                            <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.004 9.004 0 01-7.539-4.582C3.25 10.78 3 6.864 3 12c0 4.418 4.03 8 9 8s9-3.582 9-8z"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <div class="flex flex-wrap gap-2 mb-2">
+                                ${q.tags.map(tag => `<span class="bg-blue-200 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full">${tag}</span>`).join('')}
+                                <span class="text-yellow-600 ml-auto flex items-center">
+                                    <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.683-1.538 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.783.565-1.838-.197-1.538-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.92 8.729c-.783-.57-.38-1.81.588-1.81h3.462a1 1 0 00.95-.69l1.07-3.292z"></path></svg>
+                                    ${q.score}%
+                                </span>
+                            </div>
+                            <p class="text-gray-800 text-lg leading-relaxed">${q.question}</p>
+                        </div>
+                        <div class="bg-white p-4 rounded-lg border border-gray-200 text-gray-700 mb-3">
+                            ${q.response}
+                        </div>
+                        <div class="flex flex-wrap gap-4 text-sm text-gray-600">
+                            <span>Technical: <span class="font-medium text-gray-800">${q.technicalScore}%</span></span>
+                            <span>Communication: <span class="font-medium text-gray-800">${q.communicationScore}%</span></span>
+                            <span>Relevance: <span class="font-medium text-gray-800">${q.relevanceScore}%</span></span>
+                        </div>
+                    </div>
+            `).join('');
+
+            const strengthsHtml = assessment.keyStrengths.map(strength => `
+                <li class="flex items-center text-green-700 mb-2">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    ${strength}
+                </li>
+            `).join('');
+
+            const improvementsHtml = assessment.areasForImprovement.map(area => `
+                <li class="flex items-center text-orange-700 mb-2">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    ${area}
+                </li>
+            `).join('');
+
+            pageContent.innerHTML = `
+                <div class="py-6">
+                    <div class="text-center mb-8">
+                        <div class="bg-green-100 p-4 rounded-full inline-flex mb-6">
+                            <svg class="w-12 h-12 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                        <h2 class="text-3xl font-bold text-gray-800 mb-3">Interview Complete</h2>
+                        <p class="text-gray-600 max-w-md mx-auto">
+                            Comprehensive evaluation based on AI analysis and scoring
+                        </p>
+                    </div>
+
+                    <div class="bg-gray-50 p-6 rounded-lg mb-8">
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4">Overall Assessment</h3>
+                        <div class="grid grid-cols-1 gap-4 text-gray-700">
+                            <div class="flex justify-between items-center">
+                                <span class="font-medium">Overall Score</span>
+                                <div class="flex items-center">
+                                    <div class="w-24 bg-gray-200 rounded-full h-2.5 mr-2">
+                                        <div class="bg-green-500 h-2.5 rounded-full" style="width: ${assessment.overallScore}%"></div>
+                                    </div>
+                                    <span class="font-semibold text-green-700">${assessment.overallScore}%</span>
+                                </div>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="font-medium">Recommendation</span>
+                                <span class="bg-green-200 text-green-800 text-sm px-3 py-1 rounded-full font-semibold">${assessment.recommendation}</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="font-medium">Interview Duration</span>
+                                <span class="font-semibold text-gray-800">${assessment.interviewDuration}</span>
+                            </div>
+                        </div>
+
+                        <h3 class="text-xl font-semibold text-gray-800 mt-6 mb-4">Detailed Scores</h3>
+                        <div class="grid grid-cols-1 gap-4 text-gray-700">
+                            <div class="flex justify-between items-center">
+                                <span class="font-medium">Technical Skills</span>
+                                <div class="flex items-center">
+                                    <div class="w-24 bg-gray-200 rounded-full h-2.5 mr-2">
+                                        <div class="bg-blue-500 h-2.5 rounded-full" style="width: ${assessment.detailedScores.technicalSkills}%"></div>
+                                    </div>
+                                    <span class="font-semibold text-gray-800">${assessment.detailedScores.technicalSkills}%</span>
+                                </div>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="font-medium">Communication</span>
+                                <div class="flex items-center">
+                                    <div class="w-24 bg-gray-200 rounded-full h-2.5 mr-2">
+                                        <div class="bg-purple-500 h-2.5 rounded-full" style="width: ${assessment.detailedScores.communication}%"></div>
+                                    </div>
+                                    <span class="font-semibold text-gray-800">${assessment.detailedScores.communication}%</span>
+                                </div>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="font-medium">Soft Skills</span>
+                                <div class="flex items-center">
+                                    <div class="w-24 bg-gray-200 rounded-full h-2.5 mr-2">
+                                        <div class="bg-indigo-500 h-2.5 rounded-full" style="width: ${assessment.detailedScores.softSkills}%"></div>
+                                    </div>
+                                    <span class="font-semibold text-gray-800">${assessment.detailedScores.softSkills}%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-8">
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4">Detailed Question Analysis</h3>
+                        ${detailedQuestionsHtml}
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                        <div class="bg-green-50 p-6 rounded-lg">
+                            <h3 class="text-xl font-semibold text-green-800 mb-4">Key Strengths</h3>
+                            <ul class="list-none p-0 m-0">
+                                ${strengthsHtml}
+                            </ul>
+                        </div>
+                        <div class="bg-orange-50 p-6 rounded-lg">
+                            <h3 class="text-xl font-semibold text-orange-800 mb-4">Areas for Improvement</h3>
+                            <ul class="list-none p-0 m-0">
+                                ${improvementsHtml}
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row justify-center gap-4">
+                        <button onclick="exportReport()" class="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold shadow-md hover:bg-blue-700 transition-colors duration-200 flex items-center justify-center">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l3-3m-3 3l-3-3m-3 8h10a2 2 0 002-2v-3a2 2 0 00-2-2H7a2 2 0 00-2 2v3a2 2 0 002 2z"></path>
+                            </svg>
+                            Export Report
+                        </button>
+                        <button onclick="startNewInterview()" class="bg-gray-200 text-gray-700 px-6 py-3 rounded-lg font-semibold shadow-md hover:bg-gray-300 transition-colors duration-200 flex items-center justify-center">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004 12c0 2.21.817 4.265 2.179 5.865m1.139-9.739l3.29-3.29M13 16V9l3 3m-3 3l-3-3"></path>
+                            </svg>
+                            New Interview
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        // --- Navigation and State Management ---
+
+        function renderPage() {
+            // Clear any existing timer when rendering a new page
+            if (appState.timerInterval) {
+                clearInterval(appState.timerInterval);
+                appState.timerInterval = null;
+            }
+
+            switch (appState.currentPage) {
+                case 'uploadResume':
+                    renderUploadResumePage();
+                    break;
+                case 'interviewSetup':
+                    renderInterviewSetupPage();
+                    break;
+                case 'interviewSession':
+                    renderInterviewSessionPage();
+                    break;
+                case 'interviewComplete':
+                    renderInterviewCompletePage();
+                    break;
+                default:
+                    renderUploadResumePage();
+            }
+        }
+
+        // --- Event Handlers and Core Logic ---
+
+        async function handleResumeUpload(event) {
+            const file = event.target.files[0];
+            if (!file) {
+                document.getElementById('fileNameDisplay').textContent = '';
+                return;
+            }
+
+            document.getElementById('fileNameDisplay').textContent = file.name;
+            document.getElementById('uploadStatus').classList.remove('hidden');
+            showLoading("Analyzing resume with AI...");
+
+            const formData = new FormData();
+            formData.append('resume', file);
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/upload_resume`, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-User-Session-Id': appState.sessionId // Pass session ID
+                    }
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                appState.candidateProfile = result.candidate_profile;
+                // If backend generated a new session ID (e.g., first call), update local state
+                if (result.session_id && result.session_id !== appState.sessionId) {
+                    appState.sessionId = result.session_id;
+                    console.log("Updated session ID from backend:", appState.sessionId);
+                }
+                console.log("Candidate Profile from backend:", appState.candidateProfile);
+
+                appState.currentPage = 'interviewSetup';
+                renderPage();
+
+            } catch (error) {
+                console.error("Error uploading or processing resume:", error);
+                alert(`Failed to process resume: ${error.message}. Please try again.`);
+                document.getElementById('uploadStatus').textContent = 'Upload failed. Please try again.';
+                document.getElementById('uploadStatus').classList.remove('text-green-600');
+                document.getElementById('uploadStatus').classList.add('text-red-600');
+                // Fallback to default profile or stay on upload page
+                appState.candidateProfile = {
+                    name: "Error Processing",
+                    email: "error@example.com",
+                    experience: "N/A",
+                    key_skills: ["Error", "Fallback"],
+                    inferred_position: "Unknown"
+                };
+                appState.currentPage = 'uploadResume'; // Stay on upload page if critical error
+                renderPage();
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function startInterview() {
+            const positionRole = document.getElementById('positionRole').value;
+            // Ensure candidateProfile is available before proceeding
+            if (!appState.candidateProfile) {
+                alert("Please upload a resume first to create a candidate profile.");
+                appState.currentPage = 'uploadResume';
+                renderPage();
+                return;
+            }
+            appState.candidateProfile.position = positionRole; // Update position in state
+
+            showLoading("Generating personalized questions...");
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/setup_interview`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-User-Session-Id': appState.sessionId // Pass session ID
+                    },
+                    body: JSON.stringify({
+                        position_role: positionRole,
+                        candidate_profile: appState.candidateProfile // Send full profile for context
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                appState.interviewQuestions = result.questions;
+                appState.currentQuestionIndex = 0;
+                appState.interviewResponses = []; // Clear previous responses
+                console.log("Generated Questions:", appState.interviewQuestions);
+
+                appState.currentPage = 'interviewSession';
+                renderPage();
+
+            } catch (error) {
+                console.error("Error generating interview questions:", error);
+                alert(`Failed to generate questions: ${error.message}. Please try again.`);
+                appState.currentPage = 'interviewSetup'; // Stay on setup page if question generation fails
+                renderPage();
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function nextQuestion() {
+            const responseText = document.getElementById('yourResponse').value;
+            if (responseText.trim() === "") {
+                alert("Please provide a response before moving to the next question.");
+                return;
+            }
+
+            const currentQuestion = appState.interviewQuestions[appState.currentQuestionIndex];
+            const duration = document.getElementById('timerDisplay').textContent; // Capture duration for this question
+
+            showLoading("Evaluating response...");
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/submit_answer`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-User-Session-Id': appState.sessionId // Pass session ID
+                    },
+                    body: JSON.stringify({
+                        question_id: currentQuestion.id,
+                        response_text: responseText,
+                        duration: duration
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                console.log("Response Evaluation:", result.evaluation);
+
+                // Save the current response along with its evaluation
+                appState.interviewResponses.push({
+                    questionId: currentQuestion.id,
+                    question: currentQuestion.question,
+                    tags: currentQuestion.tags,
+                    response: responseText,
+                    duration: duration,
+                    evaluation: result.evaluation
+                });
+
+                if (appState.currentQuestionIndex < appState.interviewQuestions.length - 1) {
+                    appState.currentQuestionIndex++;
+                    appState.currentPage = 'interviewSession';
+                    renderPage();
+                } else {
+                    // All questions answered, proceed to assessment
+                    await generateAssessment();
+                    appState.currentPage = 'interviewComplete';
+                    renderPage();
+                }
+            } catch (error) {
+                console.error("Error submitting answer or getting evaluation:", error);
+                alert(`Failed to submit answer: ${error.message}. Please try again.`);
+                // Stay on current question if submission fails
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function previousQuestion() {
+            if (appState.currentQuestionIndex > 0) {
+                // Remove the last response if navigating back
+                appState.interviewResponses.pop();
+                appState.currentQuestionIndex--;
+                appState.currentPage = 'interviewSession';
+                renderPage();
+            }
+        }
+
+        async function generateAssessment() {
+            showLoading("Generating final assessment...");
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/get_assessment`, {
+                    method: 'GET',
+                    headers: {
+                        'X-User-Session-Id': appState.sessionId // Pass session ID
+                    }
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                appState.interviewAssessment = result.assessment;
+                console.log("Final Assessment:", appState.interviewAssessment);
+
+            } catch (error) {
+                console.error("Error generating assessment:", error);
+                alert(`Failed to generate assessment: ${error.message}. Displaying partial data.`);
+                // Fallback to a basic assessment if API call fails
+                appState.interviewAssessment = {
+                    overallScore: 0,
+                    recommendation: "Error",
+                    interviewDuration: "N/A",
+                    detailedScores: { technicalSkills: 0, communication: 0, softSkills: 0 },
+                    detailedQuestionAnalysis: appState.interviewResponses,
+                    keyStrengths: ["Assessment failed."],
+                    areasForImprovement: ["Check backend logs for errors."]
+                };
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function exportReport() {
+            console.log("Exporting Report:", appState.interviewAssessment);
+            // In a real application, you'd generate a PDF or a structured report here.
+            // For example, you could send the assessment data to the backend to generate a PDF.
+            alert("Report export simulated. Check console for details.");
+        }
+
+        function startNewInterview() {
+            // Reset application state
+            appState.candidateProfile = null;
+            appState.interviewQuestions = [];
+            appState.currentQuestionIndex = 0;
+            appState.interviewResponses = [];
+            appState.interviewAssessment = null;
+            appState.currentPage = 'uploadResume';
+            appState.sessionId = crypto.randomUUID(); // Generate a brand new session ID for a new interview
+            renderPage();
+        }
+
+        function resetInterview() {
+            // Reset current interview session
+            appState.currentQuestionIndex = 0;
+            appState.interviewResponses = [];
+            appState.currentPage = 'interviewSetup'; // Go back to setup to re-generate questions
+            renderPage();
+        }
+        
+        // Initialize the page on load
+        window.onload = renderPage;
+
+    </script>
+</body>
+</html>
